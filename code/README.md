@@ -1,82 +1,55 @@
-# Toy code for Weeks 2 and 3
+# Code for Week 6
 
-Two scripts, NumPy only. Read the week guide first — the code is there to make
-the guide concrete, not the other way round.
+NumPy and SciPy only. All five files in one folder — `week6_sharpening.py`
+imports `week4_design.py`, which carries the model from Weeks 2–3.
 
 ```bash
-python3 -c "import numpy; print(numpy.__version__)"   # that is all you need
-
-python3 week2_toy.py                 # Week 2 worked example
-python3 week2_toy.py --z 0           # Week 2, Exercise 1
-python3 week2_toy.py --m 0.5         # Week 2, Exercise 2
-
-python3 week3_margin.py              # Week 3 worked example
-python3 week3_margin.py --m 0.5      # Week 3, Exercise 2
+python3 week6_sharpening.py --verify      # Part E: the two identities. RUN THIS FIRST.
+python3 week6_sharpening.py               # one system, Parts A–D
+python3 week6_sharpening.py --systems 40 --output out/w6.json
+python3 week6_sharpening.py --exercise    # Q1–Q7, each with its command
 ```
 
-`week3_margin.py` imports `week2_toy.py`, so keep both files in the same folder.
+Useful flags: `--f` (attack group size, default 2), `--a-bar` (amplitude,
+default 1.0), `--n-p`, `--n-a`, `--seed`.
 
-## The toy city
+## What is new this week
 
-Two physical sectors (0 = power, 1 = transportation) and two agents (0 = power
-agent, 1 = transportation agent). Four blocks:
-
-| Block | Direction | Set by |
+| | Weeks 4–5 | Week 6 |
 |---|---|---|
-| `P(m)` | physical → physical | mitigation `m`: `P = (1 − 0.6 m) P0` |
-| `A(z)` | agent → agent (messages) | intensity `z` scales the **off-diagonals only** |
-| `C(γ)` | agent → physical (**authority**) | `C = C0 · diag(γ)`; at γ = 0 this block is zero |
-| `D` | physical → agent (sensing) | **not a decision** — agents observe the plant |
+| threat | none — nominal matrix only | declared set: ≤ f sources amplify their own message gains by ≤ ā |
+| certificate | row ratio ≤ ᾱ | row ratio + ā·top-f(loads) ≤ ᾱ |
+| two variants | — | **global** `R_f` (one number for all rows) vs **rowwise** `R_f^(i)` |
+| convexity | LP directly | top-f epigraph, so still an LP |
 
-Flags `--gamma`, `--z`, `--m` all take values in [0, 1].
+## Expected output
 
-## What each script shows
+`--verify`: epigraph identity max error ~7e-15; ordering violations 0 of 25;
+conservatism on random z median ~2.07×.
 
-**`week2_toy.py`**
+Single system (seed 20260829, f=2, ā=1.0): global `R_f` = 0.4959 vs rowwise max
+0.3703, median 0.2575 — conservatism 1.93×. The **Week-4 design fails**: nominal
+0.9400 but true worst 1.3103. Rowwise bound 1.3103 (exactly tight here), global
+1.4359. Designing against each: rowwise keeps 8 links and γ̄ = 0.1831; global
+keeps 2 links and γ̄ = 0.1563.
 
-| Part | Point |
-|---|---|
-| A | the four blocks and the assembled 4×4 `K` |
-| B | ρ(P)=0.6712, ρ(A)=0.8000 — both layers stable — yet ρ(K)=1.2440 |
-| C | one 5% power deficit growing 1700× in thirty steps |
-| D | authority swept by brute force; tips at γ ≈ 0.30 |
+40 systems: conservatism mean 1.96×, median 1.88×, range [1.47, 2.84]. Both
+certify 40/40 at ā = 1.0, but global costs a median +22.5% in objective.
 
-**`week3_margin.py`**
+## The bug worth knowing about
 
-| Part | Point |
-|---|---|
-| A | same true bound, two witnesses: the lazy one wastes 0.036 of margin |
-| B | each row of `K v ≤ ᾱ v` as *already spent + per-unit cost ≤ budget* |
-| C | γ\* = 0.0364 from one formula, vs a true tipping point of 0.1480 |
-| D | what refusing means: same plant, 211× less deficit |
-
-## Sanity check
-
-```bash
-python3 week2_toy.py --gamma 0
-```
-
-Must print `rho(K) = 0.8000` and report contraction. With authority off, `C = 0`,
-`K` is block lower-triangular, so ρ(K) can only be max{ρ(P), ρ(A)} = max{0.6712,
-0.8000}. Anything else is a bug worth chasing.
-
-## Two traps the code walks into on purpose
-
-Both are explained in the source comments. Neither is a mistake.
-
-1. **Anchoring.** Build the witness at γ = 1 and use it to budget the γ = 0 rows,
-   and Part C declares the problem infeasible. Anchor the witness at a design you
-   already trust — here, authority off.
-2. **Degenerate witnesses.** With `C = 0`, `K0` is block triangular and its
-   Perron vector has *zeros* in the physical entries, so you cannot divide by it.
-   Use the resolvent `v = (ᾱ I − K0)^{-1} 1`, strictly positive whenever
-   ρ(K0) < ᾱ. This is how a usable fallback witness is built in general.
+`solve_with_threat` uses the top-f **epigraph**, not a guessed worst-set. The
+first version of this file guessed the f worst sources from the current z,
+charged only those, and iterated — and the LP routed around it, returning
+designs with attacked rate 1.3103 against a target of 0.94 while reporting
+success. Exercise Q7 asks you to reproduce that failure on purpose. A constraint
+built on a guessed arg-max is a hint, not a constraint.
 
 ## Do not
 
-- **Do not enlarge the toy.** A 4×4 matrix you fully understand beats a 400-node
-  model you do not. Size comes in Month 2, after the certificate exists.
-- **Do not add a solver yet.** Week 4 introduces the convex program; adding one
-  now hides the structure you are meant to be learning.
-- **Do not loosen ᾱ = 0.94** to make Part C's conservatism go away. The safety
-  level is declared first. Closing that gap honestly is the Week 6–7 topic.
+- Do not raise `ALPHA_BAR` to make an attacked design feasible. Neither
+  certificate ever goes infeasible — switching all links off is always
+  available — so an infeasibility you see is a bug, not a reason to relax ᾱ.
+- Do not conclude the rowwise bound is always tight because it is tight on the
+  default seed. Equation (3) is exact per row; the brute force maximises over
+  rows *and* subsets. Check, don't assume.
